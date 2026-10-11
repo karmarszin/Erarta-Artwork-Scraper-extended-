@@ -1,135 +1,71 @@
 # Erarta Artwork ETL Pipeline
 
-Образовательный проект микро-ETL пайплайна для автоматизированного сбора, нормализации, хранения и аналитики данных о произведениях искусства с витрины Музея современного искусства «Эрарта».
+Образовательный микро-ETL пайплайн: сбор, нормализация и хранение данных о произведениях искусства с витрины музея «Эрарта».
 
-Архитектура проекта построена на базе реляционной СУБД SQLite в качестве шины состояний (State Machine / Task Queue), что обеспечивает отказоустойчивость, защиту от дубликатов (идемпотентность) и возможность инкрементального сбора данных.
+SQLite используется как шина состояний (очередь задач): статусы `pending` / `done` / `error` позволяют прерывать процесс и продолжать без повторного обхода уже обработанных URL.
 
----
+## Слои
 
-## Ключевые особенности архитектуры
+| Слой | Где | Ответственность |
+| --- | --- | --- |
+| CLI / handlers | `erarta_scraper/cli.py`, `main.py` | аргументы, логирование, запуск стадий |
+| Pipeline (orchestration) | `erarta_scraper/pipeline/` | collect / visit, батчи, лимиты |
+| Domain | `erarta_scraper/domain/` | статусы, DTO, чистые парсеры |
+| Scraping | `erarta_scraper/scraping/` | WebDriver, селекторы, retry, rate limit |
+| Data access | `erarta_scraper/db/` | модели, session factory, repositories |
 
-- **Двухфазная экстракция (Decoupled ETL):** разделение этапа быстрой индексации каталога (`link_scraper`) и этапа глубокого извлечения атрибутов карточек (`link_visitor`).
-- **SQLite как координатор задач:** статусы записей (`pending`, `done`, `error`) позволяют безболезненно прерывать процесс (`Ctrl+C`) и возобновлять его без повторного обхода уже скачанных страниц.
-- **Нормализованная схема данных (1:M):** авторы и картины разнесены по связанным таблицам с внешним ключом `ForeignKey`.
-- **Паттерн Get-or-Create с кэшированием:** дедупликация авторов в оперативной памяти минимизирует количество транзакций к диску.
-- **Идемпотентный Upsert:** повторные запуски не создают дублей благодаря проверкам `ON CONFLICT (url) DO NOTHING`.
-- **Пакетная обработка (Batch Processing):** транзакции фиксируются пачками, что оптимизирует производительность SQLite и снижает нагрузку на диск.
+Корневые `models.py`, `link_scraper.py`, `link_visitor.py` — тонкие обёртки для старых команд запуска.
 
----
+## Конвенции (обнаружимые в коде)
 
-## Схема базы данных
+1. **Очередь в БД, не в памяти.** Новая карточка всегда `ArtworkStatus.PENDING`; воркер меняет статус на `DONE` или `ERROR`.
+2. **Идемпотентный enqueue.** `ArtworkRepository.enqueue_urls` делает `ON CONFLICT DO NOTHING` по `url` и не сбрасывает уже обработанные строки.
+3. **Get-or-create с кэшем.** `ArtistRepository.get_or_create_id` сначала смотрит in-memory cache, затем БД, затем `flush()`.
+4. **Батч-коммит.** Visit фиксирует транзакцию целиком на пачку, а не на каждую картину.
+5. **Иерархия ошибок.** `ScraperError` → `ParseError` / `BrowserError` / `QueueError`; retry только на сетевые/браузерные сбои.
+6. **Локаторы отдельно от парсинга.** XPath/CSS живут в `scraping/selectors.py`; `details_from_text_getter` принимает любой `locator → text`.
+7. **Конфиг из env.** Префикс `ERARTA_*` (`ERARTA_PAGES`, `ERARTA_HEADLESS`, `ERARTA_DB_PATH`, …), CLI перекрывает env.
+8. **Логгер `erarta`.** Библиотечный код не вызывает `print`.
+9. **Пауза между запросами.** `Pace` в `BrowserSession.get`.
 
-База данных SQLite (`art_market.db`) инициализируется с поддержкой WAL-режима (`PRAGMA journal_mode = WAL`) и каскадных связей:
+## Схема БД
 
 ```text
-┌─────────────────────────┐         ┌─────────────────────────────────┐
-│         artists         │         │            artworks             │
-├─────────────────────────┤         ├─────────────────────────────────┤
-│ id (PK, AutoIncrement)  │ 1     M │ id (PK, AutoIncrement)          │
-│ name (VARCHAR, UNIQUE)  │◄────────┤ artist_id (FK -> artists.id)    │
-└─────────────────────────┘         │ url (VARCHAR, UNIQUE, INDEX)    │
-                                    │ title (VARCHAR)                 │
-                                    │ price (FLOAT)                   │
-                                    │ year (INTEGER)                  │
-                                    │ size, art_type, genre (VARCHAR) │
-                                    │ technique, baguette (VARCHAR)   │
-                                    │ status (pending / done / error) │
-                                    │ updated_at (DATETIME)           │
-                                    └─────────────────────────────────┘
-``` 
-
-## Структура проекта
-
-```
-Erarta-Artwork-Scraper/
-│
-├── models.py             # Схема SQLAlchemy 2.0 (Artist, Artwork) и инициализация engine
-├── link_scraper.py       # Этап 1: сбор URL по пагинации каталога и запись в очередь
-├── link_visitor.py       # Этап 2: обход очереди pending, сбор атрибутов и привязка авторов
-├── main.py               # Оркестратор пайплайна (CLI-интерфейс управления этапами)
-│
-├── notebooks/
-│   └── analytics.ipynb   # 5 разноплановых аналитических запросов (Pandas / SQLAlchemy)
-│
-├── requirements.txt      # Зависимости проекта
-└── README.md             # Документация
+artists (id, name UNIQUE)
+artworks (id, url UNIQUE, title, artist_id FK,
+          price, year, size, art_type, genre, technique, baguette,
+          status, updated_at)
 ```
 
-# Установка и настройка
-Клонируйте репозиторий и создайте виртуальное окружение:
+WAL и `PRAGMA foreign_keys=ON` включаются при создании файлового engine.
+
+## Установка
 
 ```
-git clone https://github.com/karmarszin/Erarta-Artwork-Scraper
-cd Erarta-Artwork-Scraper
 python -m venv .venv
-```
-
-# Активация окружения:
-## Windows (PowerShell):
-```
 .venv\Scripts\Activate.ps1
-```
-## Linux / macOS:
-```
-source .venv/bin/activate
-```
-
-# Установите зависимости:
-
-```
 pip install -r requirements.txt
 ```
-Минимальные зависимости:
 
-```
-selenium>=4.15.0
-sqlalchemy>=2.0.0
-pandas>=2.0.0
-```
+Нужен Google Chrome (Selenium 4 подтягивает ChromeDriver сам).
 
-# Веб-драйвер:
+## Запуск
 
-Убедитесь, что у вас установлен браузер Google Chrome актуальной версии (Selenium 4+ автоматически управляет ChromeDriver через Selenium Manager).
-
-Запуск пайплайна
-Основная точка входа — оркестратор main.py:
-
-# Полный запуск: инициализация БД, сбор 5 страниц каталога и обработка 20 карточек
 ```
 python main.py
-```
-
-# Только индексация первых 10 страниц каталога (заполнение очереди)
-```
 python main.py --stage collect --pages 10
-```
-
-# Только детальный парсинг 50 накопившихся задач из очереди
-```
-python main.py --stage visit --limit 50
-```
-
-# Автономный запуск модулей
-Каждый скрипт можно запустить как самостоятельный изолированный модуль:
-
-Инициализация таблиц БД вручную:
-
-```
+python main.py --stage visit --limit 50 --batch-size 20 --headless
 python models.py
 ```
-# Запуск сбора каталога:
+
+Переменные окружения: `ERARTA_DB_PATH`, `ERARTA_PAGES`, `ERARTA_BATCH_SIZE`, `ERARTA_HEADLESS`, `ERARTA_REQUEST_DELAY`.
+
+## Тесты
 
 ```
-python link_scraper.py
+pytest
 ```
 
-# Запуск воркера обработки карточек:
+Тесты ходят в in-memory SQLite и подменяют браузер; живой сайт не дергается.
 
-```
-python link_visitor.py
-```
-
-*Юридическое уведомление (Disclaimer)
-Этот проект создан исключительно в образовательных, академических и исследовательских целях. Он не содержит предустановленных выгрузок данных и не предназначен для коммерческого использования.*
-
-*Все права на торговые марки, наименования и контент каталога принадлежат АО «Музей современного искусства Эрарта». При работе со скриптами соблюдайте политику допустимой нагрузки на веб-ресурс (robots.txt, тайм-ауты между сетевыми запросами).*
+*Проект учебный. Соблюдайте robots.txt и разумную нагрузку на витрину.*
