@@ -1,71 +1,35 @@
-# Erarta Artwork ETL Pipeline
+# baseline-attempt-2
 
-Образовательный микро-ETL пайплайн: сбор, нормализация и хранение данных о произведениях искусства с витрины музея «Эрарта».
+## Pipeline stages
 
-SQLite используется как шина состояний (очередь задач): статусы `pending` / `done` / `error` позволяют прерывать процесс и продолжать без повторного обхода уже обработанных URL.
+```bash
+python main.py --stage collect            # index catalog pages
+python main.py --stage visit              # parse artwork pages
+python main.py --stage export-top-artists # export artists with expensive collections
+```
 
-## Слои
+### export-top-artists
 
-| Слой | Где | Ответственность |
+Выбирает художников, у которых суммарная стоимость картин в базе превышает порог,
+и сохраняет их в JSON (записи отсортированы по убыванию суммы):
+
+```bash
+python main.py --stage export-top-artists --min-total-price 3000000 --output top_artists.json
+```
+
+| Аргумент | По умолчанию | Описание |
 | --- | --- | --- |
-| CLI / handlers | `erarta_scraper/cli.py`, `main.py` | аргументы, логирование, запуск стадий |
-| Pipeline (orchestration) | `erarta_scraper/pipeline/` | collect / visit, батчи, лимиты |
-| Domain | `erarta_scraper/domain/` | статусы, DTO, чистые парсеры |
-| Scraping | `erarta_scraper/scraping/` | WebDriver, селекторы, retry, rate limit |
-| Data access | `erarta_scraper/db/` | модели, session factory, repositories |
+| `--min-total-price` | `3000000` | Минимальная суммарная стоимость работ художника |
+| `--output` | `top_artists.json` | Файл для записи результата |
 
-Корневые `models.py`, `link_scraper.py`, `link_visitor.py` — тонкие обёртки для старых команд запуска.
+Пример записи:
 
-## Конвенции (обнаружимые в коде)
-
-1. **Очередь в БД, не в памяти.** Новая карточка всегда `ArtworkStatus.PENDING`; воркер меняет статус на `DONE` или `ERROR`.
-2. **Идемпотентный enqueue.** `ArtworkRepository.enqueue_urls` делает `ON CONFLICT DO NOTHING` по `url` и не сбрасывает уже обработанные строки.
-3. **Get-or-create с кэшем.** `ArtistRepository.get_or_create_id` сначала смотрит in-memory cache, затем БД, затем `flush()`.
-4. **Батч-коммит.** Visit фиксирует транзакцию целиком на пачку, а не на каждую картину.
-5. **Иерархия ошибок.** `ScraperError` → `ParseError` / `BrowserError` / `QueueError`; retry только на сетевые/браузерные сбои.
-6. **Локаторы отдельно от парсинга.** XPath/CSS живут в `scraping/selectors.py`; `details_from_text_getter` принимает любой `locator → text`.
-7. **Конфиг из env.** Префикс `ERARTA_*` (`ERARTA_PAGES`, `ERARTA_HEADLESS`, `ERARTA_DB_PATH`, …), CLI перекрывает env.
-8. **Логгер `erarta`.** Библиотечный код не вызывает `print`.
-9. **Пауза между запросами.** `Pace` в `BrowserSession.get`.
-
-## Схема БД
-
-```text
-artists (id, name UNIQUE)
-artworks (id, url UNIQUE, title, artist_id FK,
-          price, year, size, art_type, genre, technique, baguette,
-          status, updated_at)
+```json
+{
+  "name": "Художник",
+  "total_price": 15600000.0,
+  "artwork_count": 12,
+  "art_types": ["живопись"],
+  "techniques": ["акрил", "масло"]
+}
 ```
-
-WAL и `PRAGMA foreign_keys=ON` включаются при создании файлового engine.
-
-## Установка
-
-```
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Нужен Google Chrome (Selenium 4 подтягивает ChromeDriver сам).
-
-## Запуск
-
-```
-python main.py
-python main.py --stage collect --pages 10
-python main.py --stage visit --limit 50 --batch-size 20 --headless
-python models.py
-```
-
-Переменные окружения: `ERARTA_DB_PATH`, `ERARTA_PAGES`, `ERARTA_BATCH_SIZE`, `ERARTA_HEADLESS`, `ERARTA_REQUEST_DELAY`.
-
-## Тесты
-
-```
-pytest
-```
-
-Тесты ходят в in-memory SQLite и подменяют браузер; живой сайт не дергается.
-
-*Проект учебный. Соблюдайте robots.txt и разумную нагрузку на витрину.*
