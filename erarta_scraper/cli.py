@@ -9,6 +9,7 @@ from erarta_scraper.config import Settings
 from erarta_scraper.db.session import create_engine_from_settings, init_db
 from erarta_scraper.logging_setup import setup_logging
 from erarta_scraper.pipeline.collect import run_collect
+from erarta_scraper.pipeline.export import run_export_top_artists
 from erarta_scraper.pipeline.visit import run_visit
 
 
@@ -16,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Erarta artwork ETL pipeline")
     parser.add_argument(
         "--stage",
-        choices=["all", "collect", "visit"],
+        choices=["all", "collect", "visit", "export-top-artists"],
         default="all",
         help="Pipeline stage to run",
     )
@@ -25,6 +26,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None, help="Visit batch size")
     parser.add_argument("--headless", action="store_true", help="Run Chrome without UI")
     parser.add_argument("--db-path", default=None, help="SQLite file path")
+    parser.add_argument(
+        "--min-total-price",
+        type=float,
+        default=3_000_000,
+        help="Min total artwork price for export-top-artists",
+    )
+    parser.add_argument(
+        "--output",
+        default="top_artists.json",
+        help="Output JSON path for export-top-artists",
+    )
     return parser
 
 
@@ -52,15 +64,22 @@ def main(argv: list[str] | None = None) -> int:
     init_db(engine)
 
     started = time.time()
-    if args.stage in {"all", "collect"}:
-        run_collect(settings, engine, pages_count=settings.pages_count)
-    if args.stage in {"all", "visit"}:
-        run_visit(
-            settings,
+    if args.stage == "export-top-artists":
+        run_export_top_artists(
             engine,
-            batch_size=settings.batch_size,
-            max_total=args.limit,
+            min_total_price=args.min_total_price,
+            output=args.output,
         )
+    else:
+        if args.stage in {"all", "collect"}:
+            run_collect(settings, engine, pages_count=settings.pages_count)
+        if args.stage in {"all", "visit"}:
+            run_visit(
+                settings,
+                engine,
+                batch_size=settings.batch_size,
+                max_total=args.limit,
+            )
     elapsed = time.time() - started
     logging.getLogger("erarta").info("pipeline finished in %.2fs", elapsed)
     return 0

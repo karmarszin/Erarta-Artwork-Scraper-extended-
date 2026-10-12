@@ -64,6 +64,52 @@ def genre_frequency(session: Session, limit: int = 10) -> list[tuple[str, int]]:
     return [(genre, int(count)) for genre, count in session.execute(stmt).all()]
 
 
+def rich_artists(session: Session, min_total_price: float) -> list[dict]:
+    """Artists whose total artwork price exceeds the threshold."""
+    totals_stmt = (
+        select(
+            Artist.id,
+            Artist.name,
+            func.sum(Artwork.price),
+            func.count(Artwork.id),
+        )
+        .join(Artwork, Artwork.artist_id == Artist.id)
+        .where(Artwork.status == ArtworkStatus.DONE.value, Artwork.price.is_not(None))
+        .group_by(Artist.id)
+        .having(func.sum(Artwork.price) > min_total_price)
+        .order_by(func.sum(Artwork.price).desc(), Artist.name)
+    )
+    totals = session.execute(totals_stmt).all()
+    artist_ids = [artist_id for artist_id, _name, _total, _count in totals]
+
+    styles: dict[int, set[str]] = {artist_id: set() for artist_id in artist_ids}
+    techniques: dict[int, set[str]] = {artist_id: set() for artist_id in artist_ids}
+    if artist_ids:
+        details_stmt = (
+            select(Artwork.artist_id, Artwork.art_type, Artwork.technique)
+            .where(
+                Artwork.status == ArtworkStatus.DONE.value,
+                Artwork.artist_id.in_(artist_ids),
+            )
+        )
+        for artist_id, art_type, technique in session.execute(details_stmt).all():
+            if art_type:
+                styles[artist_id].add(art_type)
+            if technique:
+                techniques[artist_id].add(technique)
+
+    return [
+        {
+            "name": name,
+            "total_price": float(total),
+            "artworks_count": int(count),
+            "art_types": sorted(styles[artist_id]),
+            "techniques": sorted(techniques[artist_id]),
+        }
+        for artist_id, name, total, count in totals
+    ]
+
+
 def run_report(engine: Engine) -> dict:
     with Session(engine) as session:
         return {
