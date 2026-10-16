@@ -30,6 +30,8 @@ debug.log
 *.csv
 *.parquet
 *.json
+# Фикстуры тестов коммитятся обязательно (см. AGENTS.md)
+!tests/*.json
 
 # --- Jupyter Notebooks ---
 .ipynb_checkpoints/

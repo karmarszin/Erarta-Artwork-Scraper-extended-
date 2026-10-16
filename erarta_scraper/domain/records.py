@@ -14,3 +14,13 @@ class ArtworkDetails:
     genre: str | None
     baguette: str | None
     technique: str | None
+
+
+@dataclass(frozen=True)
+class RetryAttempt:
+    """Single retry-pass outcome: how a failed card ended up after re-visit."""
+
+    url: str
+    old_status: str
+    new_status: str
+    has_discount: bool

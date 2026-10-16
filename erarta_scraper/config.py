@@ -6,6 +6,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = BASE_DIR / "art_market.db"
+DEFAULT_RETRY_REPORT_PATH = BASE_DIR / "retry_report.csv"
 CATALOG_BASE_URL = "https://shop.erarta.com/ru/shop/catalogue/original/"
 
 
@@ -37,11 +38,14 @@ class Settings:
     request_delay_seconds: float = 0.4
     retry_attempts: int = 3
     retry_backoff_seconds: float = 0.5
+    max_retries: int = 20
+    report_file: Path = DEFAULT_RETRY_REPORT_PATH
     headless: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
         db_raw = os.getenv("ERARTA_DB_PATH")
+        report_raw = os.getenv("ERARTA_REPORT_FILE")
         return cls(
             db_path=Path(db_raw) if db_raw else DEFAULT_DB_PATH,
             catalog_base_url=os.getenv("ERARTA_CATALOG_URL", CATALOG_BASE_URL),
@@ -52,5 +56,7 @@ class Settings:
             request_delay_seconds=_env_float("ERARTA_REQUEST_DELAY", 0.4),
             retry_attempts=_env_int("ERARTA_RETRY_ATTEMPTS", 3),
             retry_backoff_seconds=_env_float("ERARTA_RETRY_BACKOFF", 0.5),
+            max_retries=_env_int("ERARTA_MAX_RETRIES", 20),
+            report_file=Path(report_raw) if report_raw else DEFAULT_RETRY_REPORT_PATH,
             headless=_env_bool("ERARTA_HEADLESS", False),
         )

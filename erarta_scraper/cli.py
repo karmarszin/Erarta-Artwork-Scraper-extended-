@@ -9,6 +9,7 @@ from erarta_scraper.config import Settings
 from erarta_scraper.db.session import create_engine_from_settings, init_db
 from erarta_scraper.logging_setup import setup_logging
 from erarta_scraper.pipeline.collect import run_collect
+from erarta_scraper.pipeline.retry_failed import run_retry_failed
 from erarta_scraper.pipeline.visit import run_visit
 
 
@@ -16,13 +17,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Erarta artwork ETL pipeline")
     parser.add_argument(
         "--stage",
-        choices=["all", "collect", "visit"],
+        choices=["all", "collect", "visit", "retry-failed"],
         default="all",
         help="Pipeline stage to run",
     )
     parser.add_argument("--pages", type=int, default=None, help="Catalog pages to index")
     parser.add_argument("--limit", type=int, default=None, help="Max artworks to visit")
     parser.add_argument("--batch-size", type=int, default=None, help="Visit batch size")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help="Max failed cards to re-visit (default: 20)",
+    )
+    parser.add_argument(
+        "--report-file",
+        default=None,
+        help="Retry report CSV path (default: retry_report.csv)",
+    )
     parser.add_argument("--headless", action="store_true", help="Run Chrome without UI")
     parser.add_argument("--db-path", default=None, help="SQLite file path")
     return parser
@@ -35,6 +47,12 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         updates["pages_count"] = args.pages
     if args.batch_size is not None:
         updates["batch_size"] = args.batch_size
+    if args.max_retries is not None:
+        updates["max_retries"] = args.max_retries
+    if args.report_file:
+        from pathlib import Path
+
+        updates["report_file"] = Path(args.report_file)
     if args.headless:
         updates["headless"] = True
     if args.db_path:
@@ -61,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
             batch_size=settings.batch_size,
             max_total=args.limit,
         )
+    if args.stage == "retry-failed":
+        run_retry_failed(settings, engine)
     elapsed = time.time() - started
     logging.getLogger("erarta").info("pipeline finished in %.2fs", elapsed)
     return 0

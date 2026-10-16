@@ -60,6 +60,17 @@ class ArtworkRepository:
             ).all()
         )
 
+    def list_errors(self, limit: int) -> list[Artwork]:
+        """Failed cards eligible for a retry pass (status == error)."""
+        return list(
+            self.session.scalars(
+                select(Artwork)
+                .where(Artwork.status == ArtworkStatus.ERROR.value)
+                .order_by(Artwork.id)
+                .limit(limit)
+            ).all()
+        )
+
     def mark_done(self, artwork: Artwork, details: ArtworkDetails, artist_id: int | None) -> None:
         artwork.title = details.title or None
         artwork.artist_id = artist_id

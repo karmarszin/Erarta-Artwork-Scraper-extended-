@@ -70,3 +70,9 @@ class BrowserSession:
             return self.driver.find_element(By.XPATH, xpath).text.strip()
         except NoSuchElementException:
             return ""
+
+    def has_css(self, selector: str) -> bool:
+        try:
+            return bool(self.driver.find_elements(By.CSS_SELECTOR, selector))
+        except WebDriverException as exc:
+            raise BrowserError(f"failed to check {selector}") from exc
