@@ -65,6 +65,13 @@ class BrowserSession:
         except TimeoutException as exc:
             raise BrowserError(f"timeout waiting for {selector}") from exc
 
+    def has_css(self, selector: str) -> bool:
+        """Presence check on the currently opened page; missing element is not an error."""
+        try:
+            return bool(self.driver.find_elements(By.CSS_SELECTOR, selector))
+        except WebDriverException as exc:
+            raise BrowserError(f"failed to query {selector}") from exc
+
     def text_or_empty(self, xpath: str) -> str:
         try:
             return self.driver.find_element(By.XPATH, xpath).text.strip()

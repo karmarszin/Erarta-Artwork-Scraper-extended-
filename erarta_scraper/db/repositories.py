@@ -60,6 +60,17 @@ class ArtworkRepository:
             ).all()
         )
 
+    def claim_error(self, limit: int) -> list[Artwork]:
+        """Select up to `limit` artworks that previously failed with status error."""
+        return list(
+            self.session.scalars(
+                select(Artwork)
+                .where(Artwork.status == ArtworkStatus.ERROR.value)
+                .order_by(Artwork.id)
+                .limit(limit)
+            ).all()
+        )
+
     def mark_done(self, artwork: Artwork, details: ArtworkDetails, artist_id: int | None) -> None:
         artwork.title = details.title or None
         artwork.artist_id = artist_id

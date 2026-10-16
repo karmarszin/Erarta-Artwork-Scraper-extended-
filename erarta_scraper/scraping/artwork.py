@@ -5,6 +5,7 @@ from erarta_scraper.domain.records import ArtworkDetails
 from erarta_scraper.exceptions import ParseError
 from erarta_scraper.scraping.browser import BrowserSession
 from erarta_scraper.scraping.retry import retry_call
+from erarta_scraper.scraping.selectors import ArtworkLocators
 
 
 def parse_artwork_page(browser: BrowserSession, url: str) -> ArtworkDetails:
@@ -21,3 +22,9 @@ def parse_artwork_page_with_retry(browser: BrowserSession, url: str, attempts: i
         attempts=attempts,
         backoff_seconds=backoff,
     )
+
+
+def has_old_price_tag(browser: BrowserSession) -> bool:
+    """True when the currently opened page shows the discount (old price) badge."""
+    return browser.has_css(ArtworkLocators.OLD_PRICE_TAG)
+

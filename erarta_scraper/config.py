@@ -38,6 +38,8 @@ class Settings:
     retry_attempts: int = 3
     retry_backoff_seconds: float = 0.5
     headless: bool = False
+    max_retries: int = 20
+    report_file: str = "retry_report.csv"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -53,4 +55,6 @@ class Settings:
             retry_attempts=_env_int("ERARTA_RETRY_ATTEMPTS", 3),
             retry_backoff_seconds=_env_float("ERARTA_RETRY_BACKOFF", 0.5),
             headless=_env_bool("ERARTA_HEADLESS", False),
+            max_retries=_env_int("ERARTA_MAX_RETRIES", 20),
+            report_file=os.getenv("ERARTA_REPORT_FILE", "retry_report.csv"),
         )
