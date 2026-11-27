@@ -16,6 +16,29 @@ def test_clean_price_strips_currency_and_spaces() -> None:
     assert clean_price("цена по запросу") is None
 
 
+def test_clean_price_parses_decimal_comma() -> None:
+    assert clean_price("1 500,50") == 1500.5
+    assert clean_price("1 299,99 ₽") == 1299.99
+    assert clean_price("1,5") == 1.5
+    assert clean_price("0,75") == 0.75
+    assert clean_price("1 500,5") == 1500.5
+    assert clean_price("1.500,50") == 1500.5
+
+
+def test_clean_price_keeps_comma_thousands_separator() -> None:
+    assert clean_price("1299,999") == 1299999.0
+    assert clean_price("1,500") == 1500.0
+    assert clean_price("1,299,999") == 1299999.0
+
+
+def test_clean_price_edge_cases() -> None:
+    assert clean_price("1 500,50 и 2 000") == 1500.5
+    assert clean_price(",50") is None
+    assert clean_price("1500,") == 1500.0
+    assert clean_price("цена 1500 руб.") == 1500.0
+    assert clean_price("н/д") is None
+
+
 def test_clean_year_picks_first_century_match() -> None:
     assert clean_year("2019 год") == 2019
     assert clean_year("работа 1998 / печать 2020") == 1998
