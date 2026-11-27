@@ -60,6 +60,20 @@ class ArtworkRepository:
             ).all()
         )
 
+    def claim_error(self, limit: int) -> list[Artwork]:
+        """Select failed cards for a retry pass, oldest first."""
+        return list(
+            self.session.scalars(
+                select(Artwork)
+                .where(Artwork.status == ArtworkStatus.ERROR.value)
+                .order_by(Artwork.id)
+                .limit(limit)
+            ).all()
+        )
+
+    def get_by_id(self, artwork_id: int) -> Artwork | None:
+        return self.session.get(Artwork, artwork_id)
+
     def mark_done(self, artwork: Artwork, details: ArtworkDetails, artist_id: int | None) -> None:
         artwork.title = details.title or None
         artwork.artist_id = artist_id
