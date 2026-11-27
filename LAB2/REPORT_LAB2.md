@@ -144,4 +144,4 @@ python -m pytest -q
 
 * **Issue #2 / PR #3:** [Issue #2](https://github.com/karmarszin/Erarta-Artwork-Scraper-extended-/issues/2) → [PR #3](https://github.com/karmarszin/Erarta-Artwork-Scraper-extended-/pull/3)
 * **Issue #4 / PR #5:** [Issue #4](https://github.com/karmarszin/Erarta-Artwork-Scraper-extended-/issues/4) → [PR #5](https://github.com/karmarszin/Erarta-Artwork-Scraper-extended-/pull/5)
-* **Полные логи сессий:** `[указать имена/ссылки на файлы логов, например session-issue-2.json и session-issue-4.json]`
+* **Полные логи сессий:** LAB2\deepseek_logs.md
