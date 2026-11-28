@@ -5,6 +5,7 @@ class CatalogLocators:
 
 
 class ArtworkLocators:
+    OLD_PRICE_TAG = ".old-price-tag"
     TITLE = "//h1[@class='title']"
     ARTIST = "//h2[@class='author']//a"
     PRICE_SECONDARY = "(//span[@class='price-value'])[2]"

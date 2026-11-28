@@ -5,11 +5,12 @@ from erarta_scraper.domain.records import ArtworkDetails
 from erarta_scraper.exceptions import ParseError
 from erarta_scraper.scraping.browser import BrowserSession
 from erarta_scraper.scraping.retry import retry_call
+from erarta_scraper.scraping.selectors import ArtworkLocators
 
 
 def parse_artwork_page(browser: BrowserSession, url: str) -> ArtworkDetails:
     browser.get(url)
-    details = details_from_text_getter(browser.text_or_empty)
+    details = details_from_text_getter(browser.text_or_empty, ArtworkLocators)
     if not details.title and not details.artist_name:
         raise ParseError(f"empty artwork page: {url}")
     return details

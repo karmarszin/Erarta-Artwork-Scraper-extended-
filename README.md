@@ -21,9 +21,9 @@ SQLite используется как шина состояний (очеред
 1. **Очередь в БД, не в памяти.** Новая карточка всегда `ArtworkStatus.PENDING`; воркер меняет статус на `DONE` или `ERROR`.
 2. **Идемпотентный enqueue.** `ArtworkRepository.enqueue_urls` делает `ON CONFLICT DO NOTHING` по `url` и не сбрасывает уже обработанные строки.
 3. **Get-or-create с кэшем.** `ArtistRepository.get_or_create_id` сначала смотрит in-memory cache, затем БД, затем `flush()`.
-4. **Батч-коммит.** Visit фиксирует транзакцию целиком на пачку, а не на каждую картину.
+4. **Батч-коммит.** Visit фиксирует транзакцию целиком на пачку, а не на каждую картину. Исключение — `retry-failed`: там коммит идёт после каждой карточки, чтобы не терять уже восстановленные строки при падении на следующей.
 5. **Иерархия ошибок.** `ScraperError` → `ParseError` / `BrowserError` / `QueueError`; retry только на сетевые/браузерные сбои.
-6. **Локаторы отдельно от парсинга.** XPath/CSS живут в `scraping/selectors.py`; `details_from_text_getter` принимает любой `locator → text`.
+6. **Локаторы отдельно от парсинга.** XPath/CSS живут в `scraping/selectors.py`; `details_from_text_getter` принимает любой `locator → text` и набор локаторов, который инжектит scraping-слой.
 7. **Конфиг из env.** Префикс `ERARTA_*` (`ERARTA_PAGES`, `ERARTA_HEADLESS`, `ERARTA_DB_PATH`, …), CLI перекрывает env.
 8. **Логгер `erarta`.** Библиотечный код не вызывает `print`.
 9. **Пауза между запросами.** `Pace` в `BrowserSession.get`.
@@ -55,8 +55,19 @@ pip install -r requirements.txt
 python main.py
 python main.py --stage collect --pages 10
 python main.py --stage visit --limit 50 --batch-size 20 --headless
+python main.py --stage retry-failed --max-retries 20 --report-file retry_report.csv
 python models.py
 ```
+
+`retry-failed` повторно обходит карточки со статусом `error`: до `--max-retries`
+штук за запуск (по умолчанию 20, `0` — только создать пустой отчёт). Каждая
+карточка парсится тем же retry-механизмом, что и в `visit`, после чего
+проверяется наличие плашки со старой ценой `.old-price-tag`. Успешные карточки
+получают статус `done` и коммитятся сразу по одной, сбойные остаются `error` и
+не прерывают обход. В CSV `--report-file` (по умолчанию `retry_report.csv`)
+пишется строка на попытку с колонками `url, old_status, new_status,
+has_discount`; файл перезаписывается при каждом запуске. Итоговая статистика
+(`attempts`, `restored`) выводится в логгер `erarta`.
 
 Переменные окружения: `ERARTA_DB_PATH`, `ERARTA_PAGES`, `ERARTA_BATCH_SIZE`, `ERARTA_HEADLESS`, `ERARTA_REQUEST_DELAY`.
 

@@ -47,7 +47,7 @@ def test_details_from_text_getter_uses_price_fallback() -> None:
         ArtworkLocators.BAGUETTE: "",
         ArtworkLocators.TECHNIQUE: "масло",
     }
-    details = details_from_text_getter(lambda key: texts.get(key, ""))
+    details = details_from_text_getter(lambda key: texts.get(key, ""), ArtworkLocators)
     assert details.title == "Рассвет"
     assert details.artist_name == " Иванов "
     assert details.price == 45000.0

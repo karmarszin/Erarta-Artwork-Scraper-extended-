@@ -9,6 +9,7 @@ from erarta_scraper.config import Settings
 from erarta_scraper.db.session import create_engine_from_settings, init_db
 from erarta_scraper.logging_setup import setup_logging
 from erarta_scraper.pipeline.collect import run_collect
+from erarta_scraper.pipeline.retry import run_retry_failed
 from erarta_scraper.pipeline.visit import run_visit
 
 
@@ -16,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Erarta artwork ETL pipeline")
     parser.add_argument(
         "--stage",
-        choices=["all", "collect", "visit"],
+        choices=["all", "collect", "visit", "retry-failed"],
         default="all",
         help="Pipeline stage to run",
     )
@@ -25,6 +26,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None, help="Visit batch size")
     parser.add_argument("--headless", action="store_true", help="Run Chrome without UI")
     parser.add_argument("--db-path", default=None, help="SQLite file path")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=20,
+        help="Max failed cards to retry in one run",
+    )
+    parser.add_argument(
+        "--report-file",
+        default="retry_report.csv",
+        help="CSV report path for the retry-failed stage",
+    )
     return parser
 
 
@@ -60,6 +72,13 @@ def main(argv: list[str] | None = None) -> int:
             engine,
             batch_size=settings.batch_size,
             max_total=args.limit,
+        )
+    if args.stage == "retry-failed":
+        run_retry_failed(
+            settings,
+            engine,
+            max_retries=args.max_retries,
+            report_file=args.report_file,
         )
     elapsed = time.time() - started
     logging.getLogger("erarta").info("pipeline finished in %.2fs", elapsed)

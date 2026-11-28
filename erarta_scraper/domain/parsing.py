@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import Protocol
 
 from erarta_scraper.domain.records import ArtworkDetails
 
@@ -42,11 +43,29 @@ def parse_size_cm(raw_size: str | None) -> tuple[float, float] | None:
     return float(match.group(1)), float(match.group(2))
 
 
-def details_from_text_getter(get_text: Callable[[str], str]) -> ArtworkDetails:
-    """Build a record from a locator→text function (Selenium or test double)."""
-    from erarta_scraper.scraping.selectors import ArtworkLocators
+class ArtworkLocatorSet(Protocol):
+    TITLE: str
+    ARTIST: str
+    PRICE_SECONDARY: str
+    PRICE_PRIMARY: str
+    SIZE: str
+    YEAR: str
+    ART_TYPE: str
+    GENRE: str
+    BAGUETTE: str
+    TECHNIQUE: str
 
-    loc = ArtworkLocators
+
+def details_from_text_getter(
+    get_text: Callable[[str], str],
+    locators: ArtworkLocatorSet,
+) -> ArtworkDetails:
+    """Build a record from a locator→text function (Selenium or test double).
+
+    ``locators`` is injected by the scraping layer, so the pure domain module
+    does not depend on concrete site selectors.
+    """
+    loc = locators
     name = get_text(loc.TITLE)
     artist = get_text(loc.ARTIST)
     price = get_text(loc.PRICE_SECONDARY) or get_text(loc.PRICE_PRIMARY)
