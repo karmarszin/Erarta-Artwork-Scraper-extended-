@@ -7,14 +7,31 @@ from erarta_scraper.domain.records import ArtworkDetails
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 _SIZE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*[x×х]\s*(\d+(?:[.,]\d+)?)", re.IGNORECASE)
+_PRICE_NUMBER_RE = re.compile(r"(?<![,\d])\d(?:[\d\s\u00a0.,]*\d)?")
 
 
 def clean_price(raw_price: str | None) -> float | None:
-    """Keep digits only; empty or missing input becomes None."""
+    """Extract the first price number, treating a comma as a decimal separator.
+
+    Spaces and dots are thousands separators, so "120 000 ₽" -> 120000.0 and
+    "1.500.000 руб." -> 1500000.0. A comma followed by one or two digits is a
+    decimal separator ("1 500,50" -> 1500.5), while exactly three digits after
+    a comma mean thousands ("1299,999" -> 1299999.0). Empty or numberless input
+    becomes None.
+    """
     if not raw_price:
         return None
-    digits = re.sub(r"[^\d]", "", raw_price)
-    return float(digits) if digits else None
+    match = _PRICE_NUMBER_RE.search(raw_price)
+    if match is None:
+        return None
+    token = re.sub(r"\s+", "", match.group(0)).replace(".", "")
+    whole, comma, fraction = token.rpartition(",")
+    if comma:
+        if len(fraction) == 3:
+            token = whole.replace(",", "") + fraction
+        else:
+            token = whole.replace(",", "") + "." + fraction
+    return float(token) if token else None
 
 
 def clean_year(raw_year: str | None) -> int | None:
